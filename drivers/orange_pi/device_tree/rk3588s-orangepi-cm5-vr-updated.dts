@@ -1,0 +1,285 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2025 VR Headset Project
+ * Based on Orange Pi CM5 device tree
+ */
+
+#include "rk3588s-orangepi-cm5.dtsi"
+
+/ {
+    model = "Orange Pi CM5 VR Headset";
+    compatible = "orangepi,cm5-vr", "rockchip,rk3588s";
+
+    // VR-specific memory reservations
+    reserved-memory {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        // TPU DMA buffer
+        tpu_reserved: tpu@f0000000 {
+            reg = <0x0 0xf0000000 0x0 0x08000000>; // 128MB
+            no-map;
+        };
+
+        // Camera frame buffers
+        camera_reserved: camera@f8000000 {
+            reg = <0x0 0xf8000000 0x0 0x04000000>; // 64MB
+            no-map;
+        };
+    };
+
+    // VR display configuration
+    vr_displays {
+        compatible = "vr,dual-display";
+        display-left = <&mipi_dsi0>;
+        display-right = <&mipi_dsi1>;
+        sync-mode = "master-slave";
+    };
+};
+
+// Configure MIPI DSI for dual displays
+&mipi_dsi0 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    vr_panel_left: panel@0 {
+        compatible = "orangepi,rk3588-vop-vr";
+        reg = <0>;
+        reset-gpios = <&gpio1 RK_PA0 GPIO_ACTIVE_LOW>;
+        power-supply = <&vcc3v3_lcd>;
+        
+        port {
+            panel_left_in: endpoint {
+                remote-endpoint = <&dsi0_out>;
+            };
+        };
+    };
+};
+
+&mipi_dsi1 {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    vr_panel_right: panel@0 {
+        compatible = "orangepi,rk3588-vop-vr";
+        reg = <0>;
+        reset-gpios = <&gpio1 RK_PA1 GPIO_ACTIVE_LOW>;
+        power-supply = <&vcc3v3_lcd>;
+        
+        port {
+            panel_right_in: endpoint {
+                remote-endpoint = <&dsi1_out>;
+            };
+        };
+    };
+};
+
+// Camera interfaces
+&mipi_csi2_0 {
+    status = "okay";
+    ports {
+        port@1 {
+            reg = <1>;
+            csi2_0_out: endpoint {
+                remote-endpoint = <&vr_camera_0>;
+                data-lanes = <1 2>;
+            };
+        };
+    };
+};
+
+&mipi_csi2_1 {
+    status = "okay";
+    ports {
+        port@1 {
+            reg = <1>;
+            csi2_1_out: endpoint {
+                remote-endpoint = <&vr_camera_1>;
+                data-lanes = <1 2>;
+            };
+        };
+    };
+};
+
+// I2C for IMU and other sensors
+&i2c4 {
+    status = "okay";
+    clock-frequency = <400000>;
+
+    bno085: imu@4a {
+        compatible = "orangepi,bno085-vr";
+        reg = <0x4a>;
+        interrupt-parent = <&gpio3>;
+        interrupts = <RK_PB0 IRQ_TYPE_EDGE_FALLING>;
+        reset-gpios = <&gpio3 RK_PB1 GPIO_ACTIVE_LOW>;
+        vr,mode-enabled;
+        vr,sampling-rate-hz = <1000>;
+    };
+};
+
+// SPI for high-speed sensors if needed
+&spi0 {
+    status = "okay";
+    max-freq = <48000000>;
+    
+    // Additional sensors can be added here
+};
+
+// PCIe for Coral TPU (M.2 interface)
+&pcie2x1l2 {
+    status = "okay";
+    reset-gpios = <&gpio4 RK_PB6 GPIO_ACTIVE_HIGH>;
+    vpcie-supply = <&vcc3v3_pcie20>;
+    
+    pcie@0 {
+        reg = <0x00000000 0 0 0 0>;
+        #address-cells = <3>;
+        #size-cells = <2>;
+        
+        tpu@0,0 {
+            compatible = "orangepi,coral-tpu-vr";
+            reg = <0x000000 0 0 0 0>;
+            memory-region = <&tpu_reserved>;
+            vr,mode-enabled;
+            vr,latency-target-ms = <5>;
+            vr,buffer-size-kb = <4096>;
+            vr,zero-copy-enabled;
+            vr,performance-mode;
+            vr,inference-priority = <90>;
+        };
+    };
+};
+
+// Audio configuration
+&i2s0_8ch {
+    status = "okay";
+    rockchip,playback-channels = <2>;
+    rockchip,capture-channels = <4>; // 4-mic array
+};
+
+// Power management
+&rk806_single {
+    // VR-specific power rail configuration
+    vcc_3v3_lcd: PLDO_REG2 {
+        regulator-always-on;
+        regulator-boot-on;
+        regulator-min-microvolt = <3300000>;
+        regulator-max-microvolt = <3300000>;
+        regulator-name = "vcc_3v3_lcd";
+    };
+};
+
+// Camera nodes
+vr_camera_0: vr-camera@0 {
+    compatible = "orangepi,ov9281-vr";
+    reg = <0x60>;
+    clocks = <&cru CLK_MIPI_CAMARAOUT_M1>;
+    clock-names = "xvclk";
+    power-domains = <&power RK3588_PD_VI>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&mipim1_camera1_clk>;
+    reset-gpios = <&gpio1 RK_PB2 GPIO_ACTIVE_LOW>;
+    pwdn-gpios = <&gpio1 RK_PB3 GPIO_ACTIVE_HIGH>;
+    rockchip,camera-module-index = <0>;
+    rockchip,camera-module-facing = "front";
+    rockchip,camera-module-name = "VR-Camera-Left";
+    rockchip,camera-module-lens-name = "VR-Lens";
+    vr,mode-enabled;
+    vr,frame-rate = <90>;
+    vr,exposure-time-us = <5000>;
+    vr,zero-copy-enabled;
+    port {
+        vr_camera_0_out: endpoint {
+            remote-endpoint = <&csi2_0_out>;
+            data-lanes = <1 2>;
+        };
+    };
+};
+
+vr_camera_1: vr-camera@1 {
+    compatible = "orangepi,ov9281-vr";
+    reg = <0x61>;
+    clocks = <&cru CLK_MIPI_CAMARAOUT_M2>;
+    clock-names = "xvclk";
+    power-domains = <&power RK3588_PD_VI>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&mipim2_camera1_clk>;
+    reset-gpios = <&gpio1 RK_PB4 GPIO_ACTIVE_LOW>;
+    pwdn-gpios = <&gpio1 RK_PB5 GPIO_ACTIVE_HIGH>;
+    rockchip,camera-module-index = <1>;
+    rockchip,camera-module-facing = "front";
+    rockchip,camera-module-name = "VR-Camera-Right";
+    rockchip,camera-module-lens-name = "VR-Lens";
+    vr,mode-enabled;
+    vr,frame-rate = <90>;
+    vr,exposure-time-us = <5000>;
+    vr,zero-copy-enabled;
+    port {
+        vr_camera_1_out: endpoint {
+            remote-endpoint = <&csi2_1_out>;
+            data-lanes = <1 2>;
+        };
+    };
+};
+
+// WiFi configuration
+&pcie2x1l0 {
+    status = "okay";
+    reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
+    vpcie-supply = <&vcc3v3_pcie20>;
+    
+    pcie@0 {
+        reg = <0x00000000 0 0 0 0>;
+        #address-cells = <3>;
+        #size-cells = <2>;
+        
+        wifi@0,0 {
+            compatible = "orangepi,intel-ax210-vr";
+            reg = <0x000000 0 0 0 0>;
+            interrupt-parent = <&gpio0>;
+            interrupts = <RK_PC4 IRQ_TYPE_LEVEL_HIGH>;
+            vr,mode-enabled;
+            vr,traffic-priority = <6>;
+            vr,latency-target-us = <10000>;
+            vr,bandwidth-target-kbps = <20000>;
+            vr,tx-retry-limit = <2>;
+            vr,aggregation-limit = <8>;
+        };
+    };
+};
+
+// CPU isolation for real-time VR processing
+&cpu_l0 {
+    cpu-supply = <&vdd_cpu_lit_s0>;
+    operating-points-v2 = <&cluster0_opp>;
+    dynamic-power-coefficient = <100>;
+    capacity-dmips-mhz = <530>;
+    // Isolate for VR real-time processing
+    vr-isolated;
+};
+
+&cpu_l1 {
+    cpu-supply = <&vdd_cpu_lit_s0>;
+    operating-points-v2 = <&cluster0_opp>;
+    dynamic-power-coefficient = <100>;
+    capacity-dmips-mhz = <530>;
+    // Isolate for VR real-time processing
+    vr-isolated;
+};
+
+// Memory configuration for 16GB
+&dmc {
+    status = "okay";
+    center-supply = <&vdd_ddr_s0>;
+    mem-supply = <&vdd_log_s0>;
+    
+    // 16GB memory configuration
+    rockchip,ddr-frequency = <1056000000>;
+    rockchip,pd-idle-ns = <160>;
+    rockchip,sr-idle-ns = <10240>;
+    rockchip,sr-mc-gate-idle-ns = <40960>;
+    rockchip,vr-mode;
+};

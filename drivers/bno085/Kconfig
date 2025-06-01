@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# BNO085 IMU driver configuration
+#
+
+config IIO_BNO085
+	tristate "Bosch BNO085 9-axis IMU"
+	depends on I2C || SPI
+	select IIO_BUFFER
+	select IIO_TRIGGERED_BUFFER
+	help
+	  Say Y here to build support for the Bosch BNO085 9-axis IMU with
+	  built-in sensor fusion. This driver supports I2C and SPI interfaces.
+	  
+	  To compile this driver as a module, choose M here: the module
+	  will be called bno085.
+
+config IIO_BNO085_I2C
+	bool "BNO085 I2C interface support"
+	depends on IIO_BNO085 && I2C
+	default y
+	help
+	  Say Y here to enable support for I2C interface to BNO085 IMU.
+
+config IIO_BNO085_SPI
+	bool "BNO085 SPI interface support"
+	depends on IIO_BNO085 && SPI
+	default y
+	help
+	  Say Y here to enable support for SPI interface to BNO085 IMU.
+
+config IIO_BNO085_VR_OPTIMIZATIONS
+	bool "BNO085 VR-specific optimizations"
+	depends on IIO_BNO085
+	default y
+	help
+	  Say Y here to enable VR-specific optimizations for the BNO085 driver,
+	  including high-rate sampling, low-latency interrupt handling, and
+	  special AR/VR operation modes.
